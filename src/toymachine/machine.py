@@ -26,24 +26,26 @@ def dec2bin(value: int, bits: int) -> List[int]:
 class CPU:
     bits: int
 
-    registers: Dict[int, List[int]]
+    registers: Dict[str, List[int]]
 
     def __init__(self, bits: int = 8):
         self.bits = bits
         self.create_registers(bits)
 
-    def create_registers(self, bits: int, num: int = 8):
-        """Create a specified number of registers."""
+    def create_registers(self, bits: int):
+        """Create n-bit registers."""
 
-        self.registers = {}
-        for i in range(num):
-            self.registers[i] = [0 for _ in range(bits)]
+        self.registers = {
+            "AX": [0 for _ in range(bits)],  # Accumulator
+            "CX": [0 for _ in range(bits)],  # Counter
+            "DX": [0 for _ in range(bits)],  # Data
+            "PC": [0 for _ in range(bits)],  # Program Counter
+        }
 
     def dump(self) -> str:
         """Dump the contents of the registers to a string."""
 
         regdump = f"Register Dump\n"
-
         for regid, register in self.registers.items():
             regdump += f"{regid}: {register}\n"
 
@@ -51,6 +53,9 @@ class CPU:
 
     def load(self, regid: int, return_type: str = "b") -> List[int]:
         """Load a value from a register."""
+
+        if regid not in self.registers:
+            raise Exception(f"register {regid} does not exist")
 
         value = self.registers[regid]
         if return_type == "d":
@@ -60,6 +65,9 @@ class CPU:
 
     def store(self, regid: int, value: Any) -> None:
         """Store a value in a register."""
+
+        if regid not in self.registers:
+            raise Exception(f"register {regid} does not exist")
 
         if isinstance(value, int):
             value = dec2bin(value, self.bits)
