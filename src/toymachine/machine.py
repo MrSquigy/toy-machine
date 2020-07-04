@@ -68,18 +68,19 @@ class Memory:
         if address not in self.memory_blocks:
             raise Exception(f"Memory address {address} does not exist")
 
-        mem_length = len(self.memory_blocks[address])
+        mem_length = len(self.memory_blocks[address]) - pos
 
         if isinstance(value, int):
             value = dec2bin(value, length)  # Get only the bits needed
 
-        if length < len(value):
-            length = len(value)
-            # ? Maybe raise exception for supplied value greater than bit length here
-
-        if mem_length - pos < length:
+        if length < (l := len(value)):
             raise Exception(
-                f"Memory address {address} is {mem_length} bits long, but the value to be stored is {e} bits long from position {pos}"
+                f"Expected value to take {length} bits, however, {l} bits are required"
+            )
+
+        if mem_length < length:
+            raise Exception(
+                f"Memory address {address} (from bit {pos}) is {mem_length} bits long, but the value to be stored is {length} bits long"
             )
 
         for i in range(len(self.memory_blocks[address])):
@@ -170,6 +171,7 @@ class CPU:
         next_instruction = self.load_from_memory(next_instruction_location)
         print("Next instruction:", next_instruction)
         self.store("IX", next_instruction)
+        self.store("PC", next_instruction_location + 1)
 
 
 class Machine:
@@ -178,7 +180,7 @@ class Machine:
     memory: Memory
 
     def __init__(self):
-        self.memory = Memory(8, 4)  # 8 * 4 bytes = 32 bytes
+        self.memory = Memory(16, 2)  # 16 Memory Locations of 2 bytes each = 32 bytes
         self.cpu = CPU(self.memory)
 
     def dump(self) -> str:
