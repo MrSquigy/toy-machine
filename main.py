@@ -1,15 +1,12 @@
-from timeit import timeit
-
 import toymachine
 
 
 def main():
     machine = toymachine.Machine()
-    machine.cpu.store("AC", 42)
-    machine.cpu.store_in_memory(0, [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0])
+    print(machine.dump(), end="\n\n")
 
-    print("AC Register:", machine.cpu.load("AC", "d"))
-    print("Memlocation 0:", machine.cpu.load_from_memory(0, return_type="d"))
+    # Instruction to store 42 in AC
+    machine.store_in_memory(0, "0b00000000000000000000000000101010")
 
     # Temporary execution environment
     while True:
@@ -18,8 +15,14 @@ def main():
             machine.cpu.load_next_instruction()
             machine.cpu.execute_current_instruction()
 
+        elif "mem" in cmd:
+            print(machine.load_from_memory(int(cmd.split()[1]), "d"))
+
+        elif "reg" in cmd:
+            print(machine.cpu.load(cmd.split()[1].upper(), "d"))
+
         elif cmd == "dump":
-            print(f"{machine.dump()}")
+            print(machine.dump())
 
         elif cmd == "q" or cmd == "e":
             break
