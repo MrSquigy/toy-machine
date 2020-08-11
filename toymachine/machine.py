@@ -1,7 +1,10 @@
 from typing import Any, Callable, Dict, Final, List
-from math import floor
 
 word_size: Final = 32
+
+
+def _split_args(args: str, position: int) -> List[str]:
+    return ["0b" + args[:position], "0b" + args[position:]]
 
 
 class Memory:
@@ -25,7 +28,7 @@ class Memory:
 
         return dump[:-1]
 
-    def load(self, address: int, return_type: str = "b",) -> Any:
+    def load(self, address: int, return_type: str = "b") -> Any:
         if address not in self.memory_blocks:
             raise Exception(f"Memory address {address} does not exist")
 
@@ -95,7 +98,7 @@ class CPU:
 
         return value
 
-    def load_from_memory(self, address: int, return_type: str = "b",) -> Any:
+    def load_from_memory(self, address: int, return_type: str = "b") -> Any:
         """Load a value from memory."""
 
         return self.memory.load(address, return_type)
@@ -144,12 +147,14 @@ class CPU:
     def create_instruction_set(self):
         # Limit Size: 64 (6-bit opcode)
         self.instruction_set = {
-            0: self.move_reg_const,
-            1: self.move_reg_mem,
-            2: self.move_mem_const,
-            3: self.move_mem_mem,
-            4: self.move_mem_reg,
-            5: self.add,
+            0: self.move_reg_const,  # 000000
+            1: self.move_reg_mem,  # 000001
+            2: self.move_mem_const,  # 000010
+            3: self.move_mem_mem,  # 000011
+            4: self.move_mem_reg,  # 000100
+            5: self.add_reg_const,  # 000101
+            6: self.add_reg_mem,  # 000110
+            7: self.add_reg_const,  # 000111
         }
 
     def _to_register(self, addr: str) -> str:
@@ -161,14 +166,14 @@ class CPU:
     def move_reg_const(self, args: str) -> None:
         """Move a constant value into a register."""
         # 3 bits for register, 23 bits for const
-        nargs = ["0b" + args[:3], "0b" + args[3:]]
+        nargs = _split_args(args, 3)
         reg = self._to_register(nargs[0])
         self.store(reg, int(nargs[1], 2))
 
     def move_reg_mem(self, args: str) -> None:
         """Move a memory value into a register."""
         # 3 bits for register, 23 bits for memaddr
-        nargs = ["0b" + args[:3], "0b" + args[3:]]
+        nargs = _split_args(args, 3)
         reg = self._to_register(nargs[0])
         value = self.load_from_memory(int(nargs[1], 2))
         self.store(reg, value)
@@ -176,26 +181,48 @@ class CPU:
     def move_mem_const(self, args: str) -> None:
         """Move a constant value into a memory address."""
         # 10 bits for memaddr, 16 bits for const
-        nargs = ["0b" + args[:10], "0b" + args[10:]]
+        nargs = _split_args(args, 10)
         self.store_in_memory(int(nargs[0], 2), nargs[1])
 
     def move_mem_mem(self, args: str) -> None:
         """Move a memory value into a memory address."""
         # 13 bits for each memaddr
-        nargs = ["0b" + args[:13], "0b" + args[13:]]
+        nargs = _split_args(args, 13)
         value = self.load_from_memory(int(nargs[1], 2))
         self.store_in_memory(int(nargs[0], 2), value)
 
     def move_mem_reg(self, args: str) -> None:
         """Move a register's contents into a memory address."""
         # 23 bits for memaddr, 3 bits for register
-        nargs = ["0b" + args[:23], "0b" + args[23:]]
+        nargs = _split_args(args, 23)
         reg = self._to_register(nargs[1])
         value = self.load(reg)
         self.store_in_memory(int(nargs[0], 2), value)
 
-    def add(self) -> None:
-        print("add instruction called")
+    def add_reg_const(self, args: str) -> None:
+        """Add a constant value to a register value."""
+        # 3 bits for register, 23 bits for const
+        nargs = _split_args(args, 3)
+        reg = self._to_register(nargs[0])
+        value = self.load(reg, "d") + int(nargs[1], 2)
+        self.store(reg, value)
+
+    def add_reg_mem(self, args: str) -> None:
+        """Add a memory value to a register value."""
+        # 3 bits for register, 23 bits for memaddr
+        nargs = _split_args(args, 3)
+        reg = self._to_register(nargs[0])
+        value = self.load_from_memory(int(nargs[1], 2), "d") + self.load(reg, "d")
+        self.store(reg, value)
+
+    def add_mem_reg(self, args: str) -> None:
+        """Add a register value to a memory value."""
+        # 23 bits for memaddr, 3 bits for register
+        nargs = _split_args(args, 23)
+        reg = self._to_register(nargs[0])
+        memaddr = int(nargs[0], 2)
+        value = self.load_from_memory(memaddr, "d") + self.load(reg, "d")
+        self.store_in_memory(memaddr, value)
 
 
 class Machine:
@@ -206,18 +233,47 @@ class Machine:
     def __init__(self):
         self.memory = Memory(4)  # 4 Memory Locations of word_size bits
         self.cpu = CPU(self.memory)
+        self.print_introduction()
 
     def dump(self) -> str:
         """Dump the machine state."""
 
         return self.cpu.dump() + "\n\n" + self.memory.dump()
 
-    def load_from_memory(self, address: int, return_type: str = "b",) -> Any:
+    def load_from_memory(self, address: int, return_type: str = "b") -> Any:
         """Load a value from memory."""
 
         return self.memory.load(address, return_type)
+
+    def load_program(self, program: List[str]) -> None:
+        """Load a program into memory."""
+
+        self.cpu.store("PC", 0)  # Restart execution
+        for i, line in enumerate(program):
+            self.store_in_memory(i, line)
 
     def store_in_memory(self, address: int, value: Any) -> None:
         """Store a value in memory."""
 
         self.memory.store(address, value)
+
+    def print_introduction(self) -> None:
+        """Print introductory information."""
+
+        intro = "Toy Machine\n"
+        intro += (
+            f"This is a toy virtual machine, simulating a {word_size} bit computer.\n\n"
+        )
+        intro += "This project is licensed as free and open source software under the MIT License.\n"
+        intro += "Sources available at https://www.github.com/MrSquigy/toy-machine\n"
+
+        intro += "\nCommands\n----------\n"
+        intro += "<blank>\t\tExecute next instruction\n"
+        intro += "dump\t\tDump CPU registers and all memory locations\n"
+        intro += "load <filename>\tLoad an assembled program from disk\n"
+        intro += "mem <memaddr>\tCheck the contents of a memory location\n"
+        intro += "reg <regname>\tCheck the contents of a CPU register\n"
+        intro += "e, q\t\tExit\n"
+
+        print(intro)
+
