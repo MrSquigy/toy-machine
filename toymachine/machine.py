@@ -154,7 +154,7 @@ class CPU:
             4: self.move_mem_reg,  # 000100
             5: self.add_reg_const,  # 000101
             6: self.add_reg_mem,  # 000110
-            7: self.add_reg_const,  # 000111
+            7: self.add_mem_reg,  # 000111
         }
 
     def _to_register(self, addr: str) -> str:
