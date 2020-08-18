@@ -1,20 +1,23 @@
-from typing import Any, Callable, Dict, Final, List
+from typing import Annotated, Callable, Final, TypeVar
 
 word_size: Final = 32
 
+# Binary values are either str "0b0" or int
+Binary = TypeVar("Binary", str, int)
 
-def _split_args(args: str, position: int) -> List[str]:
+
+def _split_args(args: str, position: int) -> list[str]:
     return ["0b" + args[:position], "0b" + args[position:]]
 
 
 class Memory:
 
-    memory_blocks: Dict[int, str]
+    memory_blocks: dict[int, str]
 
-    def __init__(self, num: int):
+    def __init__(self, num: int) -> None:
         self.create_memory(num)
 
-    def create_memory(self, num: int):
+    def create_memory(self, num: int) -> None:
         self.memory_blocks = {}
 
         for i in range(num):
@@ -28,18 +31,18 @@ class Memory:
 
         return dump[:-1]
 
-    def load(self, address: int, return_type: str = "b") -> Any:
+    def load(self, address: int, return_type: str = "b") -> Binary:
         if address not in self.memory_blocks:
             raise Exception(f"Memory address {address} does not exist")
 
-        value = self.memory_blocks[address]
+        value: Binary = self.memory_blocks[address]
 
         if return_type == "d":
             value = int(value, 2)
 
         return value
 
-    def store(self, address: int, value: Any) -> None:
+    def store(self, address: int, value: Binary) -> None:
         if address not in self.memory_blocks:
             raise Exception(f"Memory address {address} does not exist")
 
@@ -55,18 +58,18 @@ class Memory:
 
 
 class CPU:
-    registers: Dict[str, str]
+    registers: dict[str, str]
 
     memory: Memory
 
-    instruction_set: Dict[int, Callable]  # opcode, function
+    instruction_set: dict[int, Callable[[str], None]]  # opcode, function
 
     def __init__(self, memory: Memory):
         self.memory = memory
         self.create_registers()
         self.create_instruction_set()
 
-    def create_registers(self):
+    def create_registers(self) -> None:
         """Create empty registers."""
 
         self.registers = {
@@ -86,29 +89,29 @@ class CPU:
 
         return dump[:-1]
 
-    def load(self, regid: str, return_type: str = "b") -> Any:
+    def load(self, regid: str, return_type: str = "b") -> Binary:
         """Load a value from a register."""
 
         if regid not in self.registers:
             raise Exception(f"Register {regid} does not exist")
 
-        value = self.registers[regid]
+        value: Binary = self.registers[regid]
         if return_type == "d":
             value = int(value, 2)
 
         return value
 
-    def load_from_memory(self, address: int, return_type: str = "b") -> Any:
+    def load_from_memory(self, address: int, return_type: str = "b") -> Binary:
         """Load a value from memory."""
 
         return self.memory.load(address, return_type)
 
-    def store_in_memory(self, address: int, value: Any) -> None:
+    def store_in_memory(self, address: int, value: Binary) -> None:
         """Store a value in memory."""
 
         self.memory.store(address, value)
 
-    def store(self, regid: str, value: Any) -> None:
+    def store(self, regid: str, value: Binary) -> None:
         """Store a value in a register."""
 
         if regid not in self.registers:
@@ -144,7 +147,7 @@ class CPU:
         func_header[0] = self.instruction_set[func_header[0]]
         func_header[0](func_header[1])
 
-    def create_instruction_set(self):
+    def create_instruction_set(self) -> None:
         # Limit Size: 64 (6-bit opcode)
         self.instruction_set = {
             0: self.move_reg_const,  # 000000
@@ -230,8 +233,8 @@ class Machine:
 
     memory: Memory
 
-    def __init__(self):
-        self.memory = Memory(4)  # 4 Memory Locations of word_size bits
+    def __init__(self) -> None:
+        self.memory = Memory(16)  # 4 Memory Locations of word_size bits
         self.cpu = CPU(self.memory)
         self.print_introduction()
 
@@ -240,19 +243,19 @@ class Machine:
 
         return self.cpu.dump() + "\n\n" + self.memory.dump()
 
-    def load_from_memory(self, address: int, return_type: str = "b") -> Any:
+    def load_from_memory(self, address: int, return_type: str = "b") -> Binary:
         """Load a value from memory."""
 
         return self.memory.load(address, return_type)
 
-    def load_program(self, program: List[str]) -> None:
+    def load_program(self, program: list[str]) -> None:
         """Load a program into memory."""
 
         self.cpu.store("PC", 0)  # Restart execution
         for i, line in enumerate(program):
             self.store_in_memory(i, line)
 
-    def store_in_memory(self, address: int, value: Any) -> None:
+    def store_in_memory(self, address: int, value: Binary) -> None:
         """Store a value in memory."""
 
         self.memory.store(address, value)

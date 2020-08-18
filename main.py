@@ -1,10 +1,9 @@
 import toymachine
-from typing import List
 import os
 
 
-def load_program(file_name: str) -> List[str]:
-    program: List[str]
+def load_program(file_name: str) -> list[str]:
+    program: list[str]
 
     if not (os.path.exists(file_name) and os.path.isfile(file_name)):
         raise Exception(
@@ -17,7 +16,7 @@ def load_program(file_name: str) -> List[str]:
     return program
 
 
-def main():
+def main() -> None:
     machine = toymachine.Machine()
     print(machine.dump(), end="\n\n")
 
