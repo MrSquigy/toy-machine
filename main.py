@@ -24,8 +24,11 @@ def main() -> None:
     while True:
         cmd = input("$ ")
         if cmd == "":
-            machine.cpu.load_next_instruction()
-            machine.cpu.execute_current_instruction()
+            try:
+                machine.cpu.load_next_instruction()
+                machine.cpu.execute_current_instruction()
+            except Exception as e:
+                print(e)
 
         elif "mem" in cmd:
             try:

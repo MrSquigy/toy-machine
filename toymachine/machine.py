@@ -1,21 +1,34 @@
-from typing import Annotated, Callable, Final, TypeVar
+from typing import Callable, Final, Tuple, TypeVar
 
-word_size: Final = 32
+WORD_SIZE: Final[int] = 32
+REGISTER_BITS: Final[int] = 3
+MEM_ADDR_BITS: Final[int] = 10
+OPCODE_BITS: Final[int] = 6
 
 # Binary values are either str "0b0" or int
 Binary = TypeVar("Binary", str, int)
 
 
-def _split_args(args: str, position: int) -> list[str]:
-    return ["0b" + args[:position], "0b" + args[position:]]
+def _split_args(args: str, pos: int, second_bits: int = -1) -> Tuple[str, str]:
+    """Split arguments for function calls."""
+    if second_bits == -1:
+        # Calculate remaining bits
+        # works for multiline and single instructions
+        second_bits = (
+            WORD_SIZE - OPCODE_BITS - pos
+            if len(args) == WORD_SIZE - OPCODE_BITS
+            else WORD_SIZE
+        )
+
+    return ("0b" + args[:pos], "0b" + args[-second_bits:])
 
 
 class Memory:
 
     memory_blocks: dict[int, str]
 
-    def __init__(self, num: int) -> None:
-        self.create_memory(num)
+    def __init__(self, blocks: int) -> None:
+        self.create_memory(blocks)
 
     def create_memory(self, num: int) -> None:
         self.memory_blocks = {}
@@ -49,9 +62,9 @@ class Memory:
         if isinstance(value, int):
             value = bin(value)
 
-        if (l := len(value) - 2) > word_size:
+        if (l := len(value) - 2) > WORD_SIZE:
             raise Exception(
-                f"Memory address {address} is {word_size} bits long, but the value to be stored is {l} bits long"
+                f"Memory address {address} is {WORD_SIZE} bits long, but the value to be stored is {l} bits long"
             )
 
         self.memory_blocks[address] = value
@@ -120,9 +133,9 @@ class CPU:
         if isinstance(value, int):
             value = bin(value)
 
-        if (l := len(value) - 2) > word_size:
+        if (l := len(value) - 2) > WORD_SIZE:
             raise Exception(
-                f"Register {regid} is {word_size} bits long, but the value to be stored is {l} bits long"
+                f"Register {regid} is {WORD_SIZE} bits long, but the value to be stored is {l} bits long"
             )
 
         self.registers[regid] = value
@@ -135,20 +148,35 @@ class CPU:
         self.store("IR", next_instruction)
         self.store("PC", next_instruction_location + 1)
 
-    def execute_current_instruction(self) -> None:
+    def analyze_instruction(self) -> Tuple[int, str]:
         instr: str = self.load("IR")
-        if len(instr) != word_size + 2:  # 0b + instruction
+        if len(instr) != WORD_SIZE + 2:  # 0b + instruction
             raise Exception(f"Instruction {instr[2:]} is not in the correct format")
 
-        # Split into opcode (6-bit) & operators
-        func_header = [int(instr[:8], 2), instr[8:]]
+        # Split into opcode (6-bit) & args
+        func_header = (int(instr[: OPCODE_BITS + 2], 2), instr[OPCODE_BITS + 2 :])
+
+        return func_header
+
+    def execute_current_instruction(self) -> None:
+        func, args = self.analyze_instruction()
+
+        # Is instruction multiline reserved opcode (111111 == 63)?
+        if bin(func) == "0b111111":
+            # Get actual function opcode and remaining data bits
+            self.load_next_instruction()
+            func, remaining_args = self.analyze_instruction()
+
+            # Removing trailing 0's
+            throwaway_bits = remaining_args.find("1")
+            args += remaining_args[throwaway_bits:]
 
         # Lookup python function by opcode
-        func_header[0] = self.instruction_set[func_header[0]]
-        func_header[0](func_header[1])
+        func = self.instruction_set[func]
+        func(args)
 
     def create_instruction_set(self) -> None:
-        # Limit Size: 64 (6-bit opcode)
+        # Limit Size: 63 (6-bit opcode - 1 reserved for multiline)
         self.instruction_set = {
             0: self.move_reg_const,  # 000000
             1: self.move_reg_mem,  # 000001
@@ -168,61 +196,54 @@ class CPU:
 
     def move_reg_const(self, args: str) -> None:
         """Move a constant value into a register."""
-        # 3 bits for register, 23 bits for const
-        nargs = _split_args(args, 3)
+        nargs = _split_args(args, REGISTER_BITS)
         reg = self._to_register(nargs[0])
         self.store(reg, int(nargs[1], 2))
 
     def move_reg_mem(self, args: str) -> None:
         """Move a memory value into a register."""
-        # 3 bits for register, 23 bits for memaddr
-        nargs = _split_args(args, 3)
+        nargs = _split_args(args, REGISTER_BITS, MEM_ADDR_BITS)
         reg = self._to_register(nargs[0])
         value = self.load_from_memory(int(nargs[1], 2))
         self.store(reg, value)
 
     def move_mem_const(self, args: str) -> None:
         """Move a constant value into a memory address."""
-        # 10 bits for memaddr, 16 bits for const
-        nargs = _split_args(args, 10)
+        nargs = _split_args(args, MEM_ADDR_BITS)
         self.store_in_memory(int(nargs[0], 2), nargs[1])
 
     def move_mem_mem(self, args: str) -> None:
         """Move a memory value into a memory address."""
-        # 13 bits for each memaddr
-        nargs = _split_args(args, 13)
+        nargs = _split_args(args, MEM_ADDR_BITS, MEM_ADDR_BITS)
         value = self.load_from_memory(int(nargs[1], 2))
         self.store_in_memory(int(nargs[0], 2), value)
 
     def move_mem_reg(self, args: str) -> None:
         """Move a register's contents into a memory address."""
-        # 23 bits for memaddr, 3 bits for register
-        nargs = _split_args(args, 23)
+        nargs = _split_args(args, MEM_ADDR_BITS, REGISTER_BITS)
         reg = self._to_register(nargs[1])
         value = self.load(reg)
         self.store_in_memory(int(nargs[0], 2), value)
 
+    # TODO: Test for overflow in add instructions?
     def add_reg_const(self, args: str) -> None:
         """Add a constant value to a register value."""
-        # 3 bits for register, 23 bits for const
-        nargs = _split_args(args, 3)
+        nargs = _split_args(args, REGISTER_BITS)
         reg = self._to_register(nargs[0])
         value = self.load(reg, "d") + int(nargs[1], 2)
         self.store(reg, value)
 
     def add_reg_mem(self, args: str) -> None:
         """Add a memory value to a register value."""
-        # 3 bits for register, 23 bits for memaddr
-        nargs = _split_args(args, 3)
+        nargs = _split_args(args, REGISTER_BITS, MEM_ADDR_BITS)
         reg = self._to_register(nargs[0])
         value = self.load_from_memory(int(nargs[1], 2), "d") + self.load(reg, "d")
         self.store(reg, value)
 
     def add_mem_reg(self, args: str) -> None:
         """Add a register value to a memory value."""
-        # 23 bits for memaddr, 3 bits for register
-        nargs = _split_args(args, 23)
-        reg = self._to_register(nargs[0])
+        nargs = _split_args(args, MEM_ADDR_BITS, REGISTER_BITS)
+        reg = self._to_register(nargs[1])
         memaddr = int(nargs[0], 2)
         value = self.load_from_memory(memaddr, "d") + self.load(reg, "d")
         self.store_in_memory(memaddr, value)
@@ -234,7 +255,7 @@ class Machine:
     memory: Memory
 
     def __init__(self) -> None:
-        self.memory = Memory(16)  # 4 Memory Locations of word_size bits
+        self.memory = Memory(blocks=8)
         self.cpu = CPU(self.memory)
         self.print_introduction()
 
@@ -265,7 +286,7 @@ class Machine:
 
         intro = "Toy Machine\n"
         intro += (
-            f"This is a toy virtual machine, simulating a {word_size} bit computer.\n\n"
+            f"This is a toy virtual machine, simulating a {WORD_SIZE} bit computer.\n\n"
         )
         intro += "This project is licensed as free and open source software under the MIT License.\n"
         intro += "Sources available at https://www.github.com/MrSquigy/toy-machine\n"
